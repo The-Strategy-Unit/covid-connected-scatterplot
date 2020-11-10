@@ -1,0 +1,258 @@
+---
+title: "Coming full circle: daily hospitalisations and deaths in England"
+author: '[Paul Seamer](mailto:paulseamer@nhs.net)'
+date: "`r Sys.Date()`"
+output:
+  bookdown::html_document2:
+    css: style_covid.css
+    number_sections: yes
+    toc: no
+    code_folding: hide
+subtitle: Strategy Unit
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library("bookdown")
+library("knitr")
+
+invisible(local({
+  source("asis01-setup.R")
+}))
+
+# knitr options
+opts_chunk$set(message = FALSE, warning = FALSE, eval.after = "fig.cap")
+
+if (!knitr::is_latex_output()) {
+  opts_chunk$set(dpi = 300, dev.args = list(type = "cairo"))
+}
+```
+
+```{r read}
+# from Coronavirus dashboard
+# https://coronavirus.data.gov.uk/healthcare
+admissions <- read_csv(str_c(.rawDir, "admissions_data_2020-Nov-09.csv"))
+deaths <- read_csv(str_c(.rawDir,"deaths_data_2020-Nov-09.csv"))
+```
+
+```{r wrangle}
+admi <- admissions %>% 
+  filter(areaName == "England") %>% 
+  select(date, newAdmissions) %>% 
+  rename(admi = newAdmissions)
+
+dths <- deaths %>% 
+  filter(areaName == "England") %>% 
+  select(date, newDeaths28DaysByDeathDate) %>% 
+  rename(dths = newDeaths28DaysByDeathDate)
+
+dailyDat <- admi %>% 
+  left_join(dths, by = "date") %>% 
+  mutate(isoWk = isoweek(date))
+
+dailyMovAvgDat <- dailyDat %>% 
+  mutate(across(c(admi, dths), ~ zoo::rollmean(., 7, na.pad = TRUE, align = "center")))
+```
+
+Daily mortality and hospital admissions numbers for England.
+
+```{r vanilla-ts}
+dailyDat %>% 
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = admi), color = "#440154FF", size = 1) +
+  geom_line(aes(y = dths), color = "#440154FF", size = 1) +
+  scale_x_date(name = NULL) +
+  scale_y_continuous(name = NULL) +
+  labs(
+    title = "Daily hospitalisations and deaths in England"
+    , caption = "Source: UK government Coronavirus dashboard, coronavirus.data.gov.uk")
+```
+
+Calculate 7-day centred daily average to remove some of the noise.  
+
+```{r 7day-ts}
+dailyMovAvgDat %>% 
+  ggplot(aes(x = date)) +
+  geom_point(aes(x = date, y = admi), color = "#D3D3D3FF", data = dailyDat) +
+  geom_point(aes(x = date, y = dths), color = "#D3D3D3FF", data = dailyDat) +
+  geom_line(aes(y = admi), color = "#440154FF", size = 1) +
+  geom_line(aes(y = dths), color = "#440154FF", size = 1) +
+  scale_x_date(name = NULL) +
+  scale_y_continuous(name = NULL) +
+  labs(
+    title = "Daily hospitalisations and deaths in England"
+    , subtitle = "7-day centred moving average"
+    , caption = "Source: UK government Coronavirus dashboard, coronavirus.data.gov.uk")
+```
+
+A different perspective for viewing the link between hospitalisations and deaths: Move the number of hospital admissions to the x-axis, the number of Covid-19 deaths to the y-axis, and connect the dots according to time.
+
+```{r connect-sp}
+tmp_date <- dailyDat %>% sample_frac(0.1)
+
+dailyDat %>% 
+  ggplot(aes(x = admi, y = dths, label = as.character(date))) +
+  geom_point(color = "#D3D3D3FF") +
+  geom_text_repel(data = tmp_date) +
+  geom_segment(aes(xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA)), color = "#808080FF") +
+  scale_x_continuous(name = "hospitalisations") +
+  scale_y_continuous(name = "deaths") +
+  labs(
+    title = "Daily hospitalisations and deaths in England"
+    , caption = "Source: UK government Coronavirus dashboard, coronavirus.data.gov.uk") +
+  theme(
+    panel.grid.major.x = element_line(size = .2, color = "#D3D3D3FF")
+  )
+```
+
+Not very insightful! We need to account for the exponential character of the spread of the virus - logarithmic scales should help.
+
+```{r connect-sp-log}
+tmp_date <- dailyDat %>% sample_frac(0.1)
+
+dailyDat %>% 
+  ggplot(aes(x = admi, y = dths, label = as.character(date))) +
+  geom_point(color = "#D3D3D3FF") +
+  geom_text_repel(data = tmp_date) +
+  geom_segment(aes(xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA)), color = "#808080FF") +
+  scale_x_log10(name = "hospitalisations (log scale)") +
+  scale_y_log10(name = "deaths (log scale)") +
+  labs(
+    title = "Daily hospitalisations and deaths in England"
+    , caption = "Source: UK government Coronavirus dashboard, coronavirus.data.gov.uk") +
+  theme(
+    panel.grid.major.x = element_line(size = .2, color = "#D3D3D3FF")
+  )
+```
+
+Still quite noisy - let's use the 7-day average to try and get a clearer picture of the trends.
+
+```{r connect-sp-log-7day}
+dailyDat %>% 
+  ggplot() +
+  geom_point(aes(x = admi, y = dths), color = "#DCDCDCFF") +
+  geom_segment(aes(x = admi, y = dths, xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA)), color = "#DCDCDCFF") +
+  geom_point(aes(x = admi, y = dths), color = "#440154FF", data = dailyMovAvgDat) +
+  geom_segment(aes(x = admi, y = dths, xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA))
+               , color = "#440154FF", data = dailyMovAvgDat) +
+  scale_x_log10(name = "hospitalisations (log scale)") +
+  scale_y_log10(name = "deaths (log scale)") +
+  labs(
+    title = "Daily hospital admissions and deaths in England"
+      , subtitle = "7-day centred moving average"
+      , caption = "Source: UK government Coronavirus dashboard, coronavirus.data.gov.uk") +
+  theme(
+    panel.grid.major.x = element_line(size = .2, color = "#D3D3D3FF")
+  )
+```
+
+Let's help the reader by labelling some key dates.
+
+```{r connect-sp-log-7day-label}
+startDt <- dailyMovAvgDat %>% filter(!is.na(admi)) %>% filter(date == first(date)) %>% pull(date)
+endDt <- dailyMovAvgDat %>% filter(!is.na(admi)) %>% filter(date == last(date)) %>% pull(date)
+
+keyDates <- dailyMovAvgDat %>%
+  filter(day(date) == 1 | date %in% c(startDt, endDt)) %>%
+  mutate(aboveorbelow = case_when(
+    date %in% seq(ymd("2020-05-01"), ymd("2020-08-01"), by = "months") ~ "above", TRUE ~ "below"))
+
+dailyDat %>% 
+  ggplot() +
+  geom_point(aes(x = admi, y = dths), color = "#DCDCDCFF") +
+  geom_segment(aes(x = admi, y = dths, xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA)), color = "#DCDCDCFF") +
+  geom_point(aes(x = admi, y = dths), color = "#440154FF", data = dailyMovAvgDat) +
+  geom_segment(aes(x = admi, y = dths, xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA))
+               , color = "#440154FF", data = dailyMovAvgDat) +
+  geom_text_repel(aes(x = admi, y = dths, label = as.character(format(date, "%d-%b")))
+                  , nudge_x = ifelse(keyDates$aboveorbelow == "above", -.2, .2), nudge_y = ifelse(keyDates$aboveorbelow == "above", .2, -.2)
+                  , color = "#2C2825FF"
+                  , segment.size = .2, segment.color = "#D3D3D3FF"
+                  , data = keyDates) +
+  scale_x_log10(name = "hospitalisations (log scale)") +
+  scale_y_log10(name = "deaths (log scale)") +
+  labs(
+    title = "Daily hospital admissions and deaths in England"
+    , subtitle = "7-day centred moving average"
+    , caption = "Source: UK government Coronavirus dashboard, coronavirus.data.gov.uk") +
+  theme(
+    panel.grid.major.x = element_line(size = .2, color = "#D3D3D3FF")
+  )
+```
+
+And animate!
+
+```{r connect-sp-mov}
+# plot only up to 7 days prior to the most recent data point to account for lag in death registrations
+dailyMovAvgDat <- dailyMovAvgDat %>% 
+  filter(!is.na(admi), date > as.Date("2020-03-22"), date < (max(date) - days(7))) %>% 
+  arrange(date)
+
+startDt <- first(dailyMovAvgDat$date)
+endDt <- last(dailyMovAvgDat$date)
+
+keyDates <- dailyMovAvgDat %>%
+    filter(day(date) == 1 | date %in% c(startDt, endDt, as.Date("2020-05-10"))) %>%
+    mutate(keyDate = case_when(
+      day(date) == 1 ~ date, date == endDt ~ date, TRUE ~ NA_Date_)) %>% 
+    mutate(keyDate = case_when(
+      keyDate == endDt ~ as.character(format(keyDate, "%d-%b")), day(keyDate) == 1 ~ as.character(format(keyDate, "%d-%b")), TRUE ~ as.character(keyDate))) %>% 
+    mutate(keyDate = case_when(
+      date == "2020-05-10" ~ "10-May, lockdown easing begins", date == "2020-03-23" ~ "23-Mar, lockdown starts", TRUE ~ keyDate)) %>% 
+    mutate(aboveorbelow = case_when(
+      date %in% c(seq(ymd("2020-05-01"), ymd("2020-08-01"), by = "months"), "2020-05-10") ~ "above", TRUE ~ "below"))
+
+dailyMovAvgDat <- dailyMovAvgDat %>%  
+  left_join(keyDates, by = c("date", "admi", "dths", "isoWk"))
+
+labelVar <- tibble(
+    date = dailyMovAvgDat$date
+    , x = 50, y = 500)
+
+p <- ggplot() +
+    # layer 1
+    geom_segment(aes(x = admi, y = dths, xend = c(tail(admi, n = -1), NA) , yend = c(tail(dths, n = -1), NA))
+                 , color = "#453781FF", size = .8
+                 , data = dailyMovAvgDat) +
+    # layer 2
+    geom_point(aes(x = admi, y = dths)
+               , fill = "#FFFFFFFF"
+               , color = "#453781FF"
+               , size = 2.5
+               , shape = 21
+               , data = dailyMovAvgDat) +
+    # layer 3
+    geom_text(aes(x = x, y = y, label = format(date, "%d-%b"))
+              , family = "Fira Sans Medium", size = 8, color = "#686F73FF"
+              , data = labelVar) +
+    # layer 4 
+    geom_text_repel(aes(x = admi, y = dths, label = keyDate)
+                    , nudge_x = ifelse(keyDates$aboveorbelow == "above", -.2, .2), nudge_y = ifelse(keyDates$aboveorbelow == "above", .2, -.2)
+                    , color = "#2C2825FF", segment.size = .2, segment.color = "#D3D3D3FF", hjust = ifelse(dailyMovAvgDat$aboveorbelow == "above", 1, 0)
+                    , seed = 123, point.padding = .25, max.iter = 500
+                    , data = dailyMovAvgDat) +
+    annotate(geom = "text", x = 10.5, y = 1600
+             , label = "Deaths (log scale)", color = "#686F73FF", hjust = 0, vjust = 1, family = "Fira Sans Medium", size = 4) +
+    annotate(geom = "text", x = 4900, y = 4.4
+             , label = "Hospitalisations (log scale)", color = "#686F73FF", hjust = 1, vjust = 0, family = "Fira Sans Medium", size = 4) +
+    scale_x_log10(name = NULL, limits = c(10, 5000), expand = c(0, 0.05), breaks = c(10, 100, 1000, 5000)) +
+    scale_y_log10(name = NULL, limits = c(4, 1600), expand = c(0, 0.05), breaks = c(10, 100, 1000)) +
+    labs(
+      title = "Coming full circle: daily hospitalisations and deaths in England"
+      , subtitle = "7-day centred moving average hospitalisations & deaths"
+      , caption = "Strategy Unit graphic\nSource: UK government Coronavirus dashboard, coronavirus.data.gov.uk") +
+    theme(
+      panel.grid.major.x = element_line(size = .2, color = "#D3D3D3FF")
+      ) +
+    transition_time(date) +
+    ease_aes("linear") +
+    shadow_mark(past = TRUE, future = FALSE, exclude_layer = 3)
+
+animate(plot = p, fps = 10, duration = 40, end_pause = 50
+        , width = 256, height = 160, res = 180, units = "mm"
+        , renderer = gifski_renderer())
+
+anim_save(paste0(.figDir, "covid-connected-scatterplot.gif"))
+```
+

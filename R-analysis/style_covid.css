@@ -1,0 +1,54 @@
+
+@import url(https://fonts.googleapis.com/css?family=Fira+Sans:300,300i,400,400i,500,500i,700,700i);
+@import url(https://cdn.rawgit.com/tonsky/FiraCode/1.204/distr/fira_code.css);
+
+
+body {
+  font-family: 'Fira Sans', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1.title { /* title */
+  font-size: 28px;
+  color: #2c2825;
+}
+
+h3.subtitle { /* subtitle */
+  font-size: 20px;
+  color: #2c2825;
+}
+
+h4.author { /* author */
+  font-size: 14px;
+  color: #686f73;
+}
+
+h4.date { /* date */
+  font-size: 14px;
+  color: #686f73;
+}
+
+/* headers */
+h1 {
+  font-size: 20px;
+  margin-top: 48px;
+}
+
+h2 {
+  font-size: 14px;
+  margin-top: 48px;
+}
+
+h3 {
+  font-size: 14px;
+  margin-top: 48px;
+}
+
+p.caption {
+  font-size: 1.2em;
+  font-style: bold;
+  color: black; 
+  text-align: left;
+}
+
